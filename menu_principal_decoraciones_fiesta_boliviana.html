@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decoraciones Fiesta Boliviana - Sistema de Gestión</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">Decoraciones Fiesta Boliviana S.A.<span>Sistema de Gestión</span></div>
+
+      <div class="nav-title">Principal</div>
+      <nav class="nav">
+        <button class="nav-item active" type="button" data-target="dashboard"><span class="icon">⌂</span>Inicio</button>
+        <button class="nav-item" type="button" data-target="paquetes"><span class="icon">▣</span>Paquetes decorativos</button>
+        <button class="nav-item" type="button" data-target="fabricacion"><span class="icon">⚙</span>Fabricación</button>
+        <button class="nav-item" type="button" data-target="inventario"><span class="icon">▤</span>Inventario</button>
+        <button class="nav-item" type="button" data-target="ventas"><span class="icon">↗</span>Ventas</button>
+        <button class="nav-item" type="button" data-target="alquileres"><span class="icon">▣</span>Alquileres</button>
+        <button class="nav-item" type="button" data-target="devoluciones"><span class="icon">↩</span>Devoluciones</button>
+      </nav>
+
+      <div class="nav-title">Operaciones</div>
+      <nav class="nav">
+        <button class="nav-item" type="button" data-target="logistica"><span class="icon">🚚</span>Logística</button>
+        <button class="nav-item" type="button" data-target="servicios"><span class="icon">★</span>Servicios adicionales</button>
+        <button class="nav-item" type="button" data-target="clientes"><span class="icon">♙</span>Clientes y eventos</button>
+        <button class="nav-item" type="button" data-target="reportes"><span class="icon">▥</span>Reportes</button>
+      </nav>
+
+      <div class="nav-title">Sistema</div>
+      <nav class="nav">
+        <button class="nav-item" type="button" data-target="configuracion"><span class="icon">⚙</span>Configuración</button>
+        <button class="nav-item" type="button" data-target="logout"><span class="icon">⇥</span>Cerrar sesión</button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <div class="top">
+        <div>
+          <h1 id="page-title">Panel principal</h1>
+          <div id="page-subtitle" class="subtitle">Resumen de las operaciones de Decoraciones Fiesta Boliviana S.A.</div>
+        </div>
+        <div class="user">Administrador ▾</div>
+      </div>
+
+      <div id="module-content"></div>
+    </main>
+  </div>
+
+  <script src="src/models.js"></script>
+  <script src="src/data-access.js"></script>
+  <script src="src/authentication-service.js"></script>
+  <script src="src/services/inventory-service.js"></script>
+  <script src="src/services/rental-service.js"></script>
+  <script src="src/services/sale-service.js"></script>
+  <script src="src/services/return-service.js"></script>
+  <script src="src/services/manufacturing-service.js"></script>
+  <script src="src/services/client-service.js"></script>
+  <script src="src/services/event-service.js"></script>
+  <script src="src/services/logistics-service.js"></script>
+  <script src="src/services/report-service.js"></script>
+  <script src="src/controllers/application-controller.js"></script>
+  <script src="src/ui/architecture-bootstrap.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

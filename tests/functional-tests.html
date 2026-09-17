@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pruebas funcionales</title>
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    body { padding: 28px; }
+    .test-shell { max-width: 1100px; margin: 0 auto; }
+    .test-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
+    .test-header h1 { margin:0; }
+    .test-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px; }
+    .test-summary span { padding:8px 12px; border-radius:8px; background:#fff; border:1px solid var(--panel-border); font-size:13px; }
+    .test-table td:first-child { font-weight:600; white-space:nowrap; }
+    .test-pass { color:var(--success-text); background:var(--success); }
+    .test-fail { color:var(--danger-text); background:var(--danger); }
+    .test-error { color:#687680; font-size:12px; }
+  </style>
+</head>
+<body>
+  <main class="test-shell">
+    <div class="test-header">
+      <div><h1>Pruebas funcionales</h1><p class="subtitle">Casos CP01-CP04 y reglas de negocio.</p></div>
+      <button id="run-tests" class="primary-btn" type="button">Ejecutar pruebas</button>
+    </div>
+    <div id="test-summary" class="test-summary"><span>Sin ejecutar</span></div>
+    <section class="panel">
+      <div class="table-wrap"><table class="test-table"><thead><tr><th>Caso</th><th>Resultado</th><th>Comprobación</th></tr></thead><tbody id="test-results"><tr><td colspan="3" style="text-align:center; padding:24px;">Pulsa “Ejecutar pruebas”.</td></tr></tbody></table></div>
+    </section>
+  </main>
+  <script src="../src/data-access.js"></script>
+  <script src="../src/authentication-service.js"></script>
+  <script src="../src/services/inventory-service.js"></script>
+  <script src="../src/services/rental-service.js"></script>
+  <script src="../src/services/sale-service.js"></script>
+  <script src="../src/services/return-service.js"></script>
+  <script src="../src/services/manufacturing-service.js"></script>
+  <script src="../src/services/client-service.js"></script>
+  <script src="../src/services/event-service.js"></script>
+  <script src="../src/services/logistics-service.js"></script>
+  <script src="../src/services/report-service.js"></script>
+  <script src="functional-tests.js"></script>
+</body>
+</html>
