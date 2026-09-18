@@ -112,6 +112,10 @@ th{color:#6d7880;font-weight:600}
 .sale-total-box>div span{font-size:12px;color:var(--muted)}
 .sale-total-box>div strong{font-size:19px}
 .sale-total-box .field{min-width:180px}
+.invoice-preview{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;padding:18px;background:#f7f9fa;border:1px solid var(--soft-border);border-radius:10px}
+.invoice-preview div{display:flex;flex-direction:column;gap:5px}
+.invoice-preview span{font-size:12px;color:var(--muted)}
+.invoice-preview strong{font-size:13px}
 .rental-calculation{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:20px;padding:16px;background:#f7f9fa;border:1px solid var(--soft-border);border-radius:10px}
 .rental-calculation div{display:flex;flex-direction:column;gap:6px}
 .rental-calculation span{font-size:12px;color:var(--muted)}
@@ -129,4 +133,4 @@ th{color:#6d7880;font-weight:600}
 .calendar-day>strong{font-size:13px}
 .calendar-event{border:0;border-radius:6px;background:var(--info);color:var(--info-text);font-size:11px;padding:5px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:1100px){.cards,.summary-grid,.list-grid{grid-template-columns:repeat(2,1fr)} .grid{grid-template-columns:1fr}}
-@media(max-width:900px){.app-shell{display:block}.sidebar{width:100%;min-height:auto;position:relative}.main{padding:20px}.cards,.summary-grid,.list-grid,.form-grid,.quick,.rental-calculation,.return-detail{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column;gap:12px}.calendar-grid{gap:4px}.calendar-day{min-height:80px;padding:5px}.calendar-event{font-size:10px;padding:4px}}
+@media(max-width:900px){.app-shell{display:block}.sidebar{width:100%;min-height:auto;position:relative}.main{padding:20px}.cards,.summary-grid,.list-grid,.form-grid,.quick,.rental-calculation,.return-detail,.invoice-preview{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column;gap:12px}.calendar-grid{gap:4px}.calendar-day{min-height:80px;padding:5px}.calendar-event{font-size:10px;padding:4px}}

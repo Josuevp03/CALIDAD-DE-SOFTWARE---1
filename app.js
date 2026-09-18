@@ -248,6 +248,9 @@ const clientEventState = {
   year: new Date().getFullYear()
 };
 
+const rentalClientState = { search: '' };
+const salesClientState = { search: '' };
+
 const eventTypes = ['Boda', 'Quinceañero', 'Graduación', 'Evento empresarial', 'Bautizo', 'Fiesta patronal', 'Celebración tradicional', 'Otro'];
 
 function getClientName(client) {
@@ -343,6 +346,7 @@ function renderClientsEventsUI() {
 }
 
 function bindClientEventForms(root, rerender) {
+  root.querySelectorAll('[data-client-event-action="close"]').forEach(button => button.addEventListener('click', () => button.closest('.modal')?.remove()));
   root.querySelector('#client-form')?.addEventListener('submit', event => {
     event.preventDefault();
     const payload = Object.fromEntries(new FormData(event.target).entries());
@@ -1097,6 +1101,8 @@ function renderSalesUI() {
   const paid = Number(salesState.paid || 0);
   const completedSales = db.sales.filter(sale => sale.status === 'pagado').length;
   const income = db.sales.reduce((sum, sale) => sum + Number(sale.amount || sale.total || 0), 0);
+  const filteredClients = db.clients.filter(client => getClientName(client).toLowerCase().includes(salesClientState.search.toLowerCase()) || String(client.document || '').toLowerCase().includes(salesClientState.search.toLowerCase()));
+  const latestSale = [...db.sales].reverse()[0];
   return `
     <div class="summary-grid">
       <div class="mini-card"><div class="label">Ventas registradas</div><div class="value">${db.sales.length}</div></div>
@@ -1107,7 +1113,8 @@ function renderSalesUI() {
     <section class="panel">
       <div class="module-header"><h2>Registrar venta</h2><span class="badge warning">Pago anticipado obligatorio: 100%</span></div>
       <div class="form-grid">
-        <label class="field"><span>Cliente</span><select id="sale-client"><option value="">Seleccionar cliente</option>${db.clients.map(client => `<option value="${client.id}" ${salesState.clientId === String(client.id) ? 'selected' : ''}>${getClientName(client)}</option>`).join('')}</select></label>
+        <label class="field"><span>Buscar cliente</span><input id="sale-client-search" type="search" placeholder="Nombre o documento" value="${salesClientState.search}"></label>
+        <label class="field"><span>Cliente</span><select id="sale-client"><option value="">Seleccionar cliente</option>${filteredClients.map(client => `<option value="${client.id}" ${salesState.clientId === String(client.id) ? 'selected' : ''}>${getClientName(client)} · ${client.document}</option>`).join('')}</select></label>
         <label class="field"><span>Producto o paquete</span><select id="sale-product"><option value="">Seleccionar paquete</option>${getPackageCollection().map(pkg => `<option value="${pkg.id}">${pkg.code} - ${pkg.name} · ${formatCurrency(pkg.salePrice)} · ${pkg.available} disponibles</option>`).join('')}</select></label>
         <label class="field"><span>Cantidad</span><input id="sale-quantity" type="number" min="1" value="1"></label>
         <div class="field" style="justify-content:flex-end;"><button type="button" class="secondary-btn" data-sales-action="add-item">Agregar al detalle</button></div>
@@ -1116,12 +1123,14 @@ function renderSalesUI() {
       <div class="sale-total-box"><div><span>Subtotal</span><strong>${formatCurrency(totals.subtotal)}</strong></div><div><span>Total</span><strong>${formatCurrency(totals.total)}</strong></div><label class="field"><span>Registrar pago</span><input id="sale-payment" type="number" min="0" step="0.01" value="${paid || ''}" placeholder="${totals.total}"></label><button type="button" class="primary-btn" data-sales-action="confirm-sale">Confirmar venta</button></div>
     </section>
     <section class="panel"><div class="module-header"><h2>Ventas registradas</h2><span class="subtitle">Una venta confirmada descuenta unidades disponibles.</span></div><div class="table-wrap"><table><thead><tr><th>Factura</th><th>Cliente</th><th>Fecha</th><th>Total</th><th>Pagado</th><th>Estado</th></tr></thead><tbody>${db.sales.length ? [...db.sales].reverse().map(sale => `<tr><td>${sale.id}</td><td>${sale.client}</td><td>${sale.date || '-'}</td><td>${formatCurrency(sale.amount || sale.total)}</td><td>${formatCurrency(sale.paid || sale.amount || sale.total)}</td><td><span class="badge ${sale.status === 'pagado' ? 'success' : 'warning'}">${sale.status === 'pagado' ? 'Pagado 100%' : sale.status}</span></td></tr>`).join('') : '<tr><td colspan="6" style="text-align:center; padding:20px;">No hay ventas registradas.</td></tr>'}</tbody></table></div></section>
+    <section class="panel invoice-panel"><div class="module-header"><h2>Facturación</h2><span class="badge info">Vista previa</span></div>${latestSale ? `<div class="invoice-preview"><div><strong>Decoraciones Fiesta Boliviana S.A.</strong><span>Comprobante ${latestSale.id}</span></div><div><span>Cliente</span><strong>${latestSale.client}</strong></div><div><span>Fecha</span><strong>${latestSale.date || '-'}</strong></div><div><span>Total</span><strong>${formatCurrency(latestSale.total || latestSale.amount)}</strong></div><div><span>Estado</span><strong>${latestSale.status === 'pagado' ? 'Pagado completamente' : 'Pendiente de pago'}</strong></div></div>` : '<p class="subtitle">La factura aparecerá al confirmar una venta.</p>'}</section>
   `;
 }
 
 function bindSalesActions() {
   const root = moduleContent;
   const rerender = () => { root.innerHTML = renderSalesUI(); bindSalesActions(); };
+  root.querySelector('#sale-client-search')?.addEventListener('input', event => { salesClientState.search = event.target.value; rerender(); });
   root.querySelector('#sale-client')?.addEventListener('change', event => { salesState.clientId = event.target.value; });
   root.querySelector('#sale-payment')?.addEventListener('input', event => { salesState.paid = event.target.value; });
   root.querySelectorAll('.sale-item-quantity').forEach(input => input.addEventListener('change', event => {
@@ -1242,34 +1251,81 @@ function getReservedRentalQuantity(packageId, startDate, returnDate) {
   return db.rentals.filter(rental => Number(rental.packageId) === Number(packageId) && rental.status !== 'devuelto' && rentalDatesOverlap(startDate, returnDate, rental.startDate, rental.returnDate)).reduce((sum, rental) => sum + Number(rental.quantity || 0), 0);
 }
 
+function renderRentalEditForm(rental) {
+  return `<div class="modal open" role="dialog" aria-modal="true"><div class="modal-card"><div class="modal-header"><h3>Editar alquiler ${rental.id}</h3><button type="button" class="close-btn" data-rental-action="close-edit">×</button></div><form id="rental-edit-form" data-id="${rental.id}"><div class="form-grid"><label class="field"><span>Cliente</span><input name="client" value="${rental.client}" readonly></label><label class="field"><span>Paquete</span><input name="package" value="${rental.package}" readonly></label><label class="field"><span>Cantidad</span><input name="quantity" type="number" min="1" value="${rental.quantity}" required></label><label class="field"><span>Fecha de inicio</span><input name="startDate" type="date" value="${rental.startDate}" required></label><label class="field"><span>Fecha de devolución</span><input name="returnDate" type="date" value="${rental.returnDate}" required></label><label class="field"><span>Pago anticipado</span><input name="paid" type="number" min="0" step="0.01" value="${rental.paid || 0}" required></label><label class="field"><span>Estado</span><select name="status"><option value="confirmado" ${rental.status === 'confirmado' ? 'selected' : ''}>Confirmado</option><option value="activo" ${rental.status === 'activo' ? 'selected' : ''}>Activo</option><option value="pendiente" ${rental.status === 'pendiente' ? 'selected' : ''}>Pendiente</option></select></label></div><div class="module-actions" style="justify-content:flex-end;margin-top:20px;"><button type="button" class="secondary-btn" data-rental-action="close-edit">Cancelar</button><button type="submit" class="primary-btn">Guardar cambios</button></div></form></div></div>`;
+}
+
+function bindRentalEditForm(root, rerender) {
+  root.querySelectorAll('[data-rental-action="close-edit"]').forEach(button => button.addEventListener('click', () => button.closest('.modal')?.remove()));
+  root.querySelector('#rental-edit-form')?.addEventListener('submit', event => {
+    event.preventDefault();
+    const rental = db.rentals.find(item => item.id === event.target.dataset.id);
+    if (!rental) return;
+    const payload = Object.fromEntries(new FormData(event.target).entries());
+    const calculation = calculateRentalCost(payload.startDate, payload.returnDate, rental.pricePerPeriod);
+    const paid = Number(payload.paid || 0);
+    if (calculation.daysRequested < 2) { window.alert('El alquiler mínimo es de 2 días.'); return; }
+    if (paid < calculation.total * 0.5) { window.alert(`El anticipo mínimo es ${formatCurrency(calculation.total * 0.5)}.`); return; }
+    if (!Number.isInteger(Number(payload.quantity)) || Number(payload.quantity) < 1) { window.alert('La cantidad debe ser un número entero mayor que cero.'); return; }
+    const transaction = runAtomicTransaction(() => {
+      const quantityDifference = Number(payload.quantity) - Number(rental.quantity);
+      if (quantityDifference > 0) {
+        const increase = applyInventoryMovement({ packageId: rental.packageId, type: 'rental', quantity: quantityDifference });
+        if (!increase.success) return increase;
+      } else if (quantityDifference < 0) {
+        const decrease = applyInventoryMovement({ packageId: rental.packageId, type: 'return', quantity: Math.abs(quantityDifference) });
+        if (!decrease.success) return decrease;
+      }
+      rental.startDate = payload.startDate;
+      rental.returnDate = payload.returnDate;
+      rental.quantity = Number(payload.quantity);
+      rental.daysRequested = calculation.daysRequested;
+      rental.chargedDays = calculation.chargedDays;
+      rental.periods = calculation.periods;
+      rental.total = calculation.total;
+      rental.paid = paid;
+      rental.status = payload.status;
+      return { success: true };
+    });
+    if (!transaction.success) { window.alert(`Alquiler revertido: ${transaction.message}`); return; }
+    event.target.closest('.modal')?.remove();
+    rerender();
+  });
+}
+
 function renderRentalsUI() {
   const activeRentals = db.rentals.filter(rental => ['activo', 'confirmado'].includes(rental.status));
   const income = db.rentals.reduce((sum, rental) => sum + Number(rental.total || 0), 0);
   const values = getRentalFormValues(moduleContent);
+  const filteredClients = db.clients.filter(client => getClientName(client).toLowerCase().includes(rentalClientState.search.toLowerCase()) || String(client.document || '').toLowerCase().includes(rentalClientState.search.toLowerCase()));
+  const minimumAdvance = values.calculation.total * 0.5;
+  const remainingBalance = Math.max(0, values.calculation.total - Number(rentalState.paid || 0));
   return `
     <div class="summary-grid"><div class="mini-card"><div class="label">Alquileres activos</div><div class="value">${activeRentals.length}</div></div><div class="mini-card"><div class="label">Período de alquiler</div><div class="value">2 días</div></div><div class="mini-card"><div class="label">Ingresos registrados</div><div class="value">${formatCurrency(income)}</div></div></div>
     ${rentalState.notice ? reusableComponents.alert({ message: rentalState.notice, type: 'success' }) : ''}
     <section class="panel"><div class="module-header"><h2>Registrar alquiler</h2><span class="badge info">Cada período equivale a 2 días</span></div>
       <div class="form-grid">
-        <label class="field"><span>Cliente</span><select id="rental-client"><option value="">Seleccionar cliente</option>${db.clients.map(client => `<option value="${client.id}" ${rentalState.clientId === String(client.id) ? 'selected' : ''}>${getClientName(client)}</option>`).join('')}</select></label>
+        <label class="field"><span>Buscar cliente</span><input id="rental-client-search" type="search" placeholder="Nombre o documento" value="${rentalClientState.search}"></label>
+        <label class="field"><span>Cliente</span><select id="rental-client"><option value="">Seleccionar cliente</option>${filteredClients.map(client => `<option value="${client.id}" ${rentalState.clientId === String(client.id) ? 'selected' : ''}>${getClientName(client)} · ${client.document}</option>`).join('')}</select></label>
         <label class="field"><span>Evento</span><select id="rental-event"><option value="">Seleccionar evento</option>${db.events.map(event => `<option value="${event.id}" ${rentalState.eventId === String(event.id) ? 'selected' : ''}>${event.eventType || event.event} · ${event.date}</option>`).join('')}</select></label>
         <label class="field"><span>Paquete</span><select id="rental-package"><option value="">Seleccionar paquete</option>${getPackageCollection().map(pkg => `<option value="${pkg.id}" ${rentalState.packageId === String(pkg.id) ? 'selected' : ''}>${pkg.code} - ${pkg.name} · ${formatCurrency(pkg.rentalPrice)} · ${pkg.available} disponibles</option>`).join('')}</select></label>
         <label class="field"><span>Cantidad</span><input id="rental-quantity" type="number" min="1" value="${values.quantity}"></label>
         <label class="field"><span>Fecha de inicio</span><input id="rental-start-date" type="date" value="${values.startDate}"></label>
         <label class="field"><span>Fecha de devolución</span><input id="rental-return-date" type="date" value="${values.returnDate}"></label>
-        <label class="field"><span>Pago anticipado</span><input id="rental-payment" type="number" min="0" step="0.01" value="${rentalState.paid || ''}"></label>
+        <label class="field"><span>Pago anticipado (mínimo 50%)</span><input id="rental-payment" type="number" min="${minimumAdvance}" step="0.01" value="${rentalState.paid || ''}"></label>
         <label class="field"><span>Estado</span><select id="rental-status"><option value="confirmado" ${rentalState.status === 'confirmado' ? 'selected' : ''}>Confirmado</option><option value="activo" ${rentalState.status === 'activo' ? 'selected' : ''}>Activo</option><option value="pendiente" ${rentalState.status === 'pendiente' ? 'selected' : ''}>Pendiente</option></select></label>
       </div>
-      <div class="rental-calculation"><div><span>Días solicitados</span><strong>${values.calculation.daysRequested > 0 ? values.calculation.daysRequested : '-'}</strong></div><div><span>Días cobrados</span><strong>${values.calculation.chargedDays || '-'}</strong></div><div><span>Períodos</span><strong>${values.calculation.periods || '-'}</strong></div><div><span>Precio por período</span><strong>${formatCurrency(values.calculation.pricePerPeriod)}</strong></div><div><span>Costo total</span><strong>${formatCurrency(values.calculation.total)}</strong></div></div>
+      <div class="rental-calculation"><div><span>Días solicitados</span><strong>${values.calculation.daysRequested > 0 ? values.calculation.daysRequested : '-'}</strong></div><div><span>Días cobrados</span><strong>${values.calculation.chargedDays || '-'}</strong></div><div><span>Períodos</span><strong>${values.calculation.periods || '-'}</strong></div><div><span>Precio por período</span><strong>${formatCurrency(values.calculation.pricePerPeriod)}</strong></div><div><span>Costo total</span><strong>${formatCurrency(values.calculation.total)}</strong></div><div><span>Anticipo mínimo</span><strong>${formatCurrency(minimumAdvance)}</strong></div><div><span>Saldo pendiente</span><strong>${formatCurrency(remainingBalance)}</strong></div></div>
       <div class="module-actions" style="justify-content:flex-end; margin-top:18px;"><button type="button" class="primary-btn" data-rental-action="confirm">Confirmar alquiler</button></div>
     </section>
-    <section class="panel"><div class="module-header"><h2>Alquileres registrados</h2><span class="subtitle">Las unidades se reservan al confirmar.</span></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>Cliente</th><th>Paquete</th><th>Días</th><th>Períodos</th><th>Total</th><th>Estado</th></tr></thead><tbody>${db.rentals.length ? [...db.rentals].reverse().map(rental => `<tr><td>${rental.id}</td><td>${rental.client}</td><td>${rental.package}</td><td>${rental.daysRequested || '-'}/${rental.chargedDays || '-'}</td><td>${rental.periods || '-'}</td><td>${formatCurrency(rental.total)}</td><td><span class="badge ${rental.status === 'activo' || rental.status === 'confirmado' ? 'success' : 'warning'}">${rental.status}</span></td></tr>`).join('') : '<tr><td colspan="7" style="text-align:center; padding:20px;">No hay alquileres registrados.</td></tr>'}</tbody></table></div></section>
+    <section class="panel"><div class="module-header"><h2>Alquileres registrados</h2><span class="subtitle">Las unidades se reservan al confirmar.</span></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>Cliente</th><th>Paquete</th><th>Días</th><th>Períodos</th><th>Total</th><th>Anticipo</th><th>Saldo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${db.rentals.length ? [...db.rentals].reverse().map(rental => `<tr><td>${rental.id}</td><td>${rental.client}</td><td>${rental.package}</td><td>${rental.daysRequested || '-'}/${rental.chargedDays || '-'}</td><td>${rental.periods || '-'}</td><td>${formatCurrency(rental.total)}</td><td>${formatCurrency(rental.paid)}</td><td>${formatCurrency(Math.max(0, Number(rental.total || 0) - Number(rental.paid || 0)))}</td><td><span class="badge ${rental.status === 'activo' || rental.status === 'confirmado' ? 'success' : 'warning'}">${rental.status}</span></td><td>${!['devuelto', 'devuelto_reparacion'].includes(rental.status) ? `<button type="button" class="chip-btn" data-rental-action="edit" data-id="${rental.id}">Editar</button>` : '-'}</td></tr>`).join('') : '<tr><td colspan="10" style="text-align:center; padding:20px;">No hay alquileres registrados.</td></tr>'}</tbody></table></div></section>
   `;
 }
 
 function bindRentalsActions() {
   const root = moduleContent;
   const rerender = () => { root.innerHTML = renderRentalsUI(); bindRentalsActions(); };
+  root.querySelector('#rental-client-search')?.addEventListener('input', event => { rentalClientState.search = event.target.value; rerender(); });
   ['#rental-client', '#rental-event', '#rental-package', '#rental-quantity', '#rental-start-date', '#rental-return-date', '#rental-payment', '#rental-status'].forEach(selector => {
     const eventName = ['#rental-client', '#rental-event', '#rental-package', '#rental-status'].includes(selector) ? 'change' : 'input';
     root.querySelector(selector)?.addEventListener(eventName, event => {
@@ -1290,7 +1346,7 @@ function bindRentalsActions() {
     if (values.quantity > values.pkg.available) { window.alert(`Alquiler rechazado: solo hay ${values.pkg.available} unidades disponibles de ${values.pkg.name}.`); return; }
     const rentalCapacity = values.pkg.total - values.pkg.sold - values.pkg.repair;
     if (getReservedRentalQuantity(values.pkg.id, values.startDate, values.returnDate) + values.quantity > rentalCapacity) { window.alert('Alquiler rechazado: la cantidad solicitada se cruza con reservas existentes para esas fechas.'); return; }
-    if (!Number.isFinite(paid) || paid <= 0) { window.alert('El alquiler requiere un pago anticipado mayor que cero.'); return; }
+    if (!Number.isFinite(paid) || paid < values.calculation.total * 0.5) { window.alert(`El alquiler requiere un anticipo mínimo del 50%: ${formatCurrency(values.calculation.total * 0.5)}.`); return; }
     const transaction = runAtomicTransaction(() => {
       const movement = applyInventoryMovement({ packageId: values.pkg.id, type: 'rental', quantity: values.quantity });
       if (!movement.success) return movement;
@@ -1307,6 +1363,11 @@ function bindRentalsActions() {
     rentalState.clientId = ''; rentalState.eventId = ''; rentalState.packageId = ''; rentalState.quantity = 1; rentalState.startDate = ''; rentalState.returnDate = ''; rentalState.paid = 0; rentalState.status = 'confirmado'; rentalState.notice = `Alquiler ${rentalId} registrado y ${values.quantity} unidad(es) reservada(s).`;
     rerender();
   });
+  root.querySelectorAll('[data-rental-action="edit"]').forEach(button => button.addEventListener('click', () => {
+    const rental = db.rentals.find(item => item.id === button.dataset.id);
+    if (rental) { root.insertAdjacentHTML('beforeend', renderRentalEditForm(rental)); bindRentalEditForm(root, rerender); }
+  }));
+  bindRentalEditForm(root, rerender);
 }
 
 function calculateLateFee(agreedDate, actualDate, pricePerPeriod, quantity = 1) {
@@ -1325,6 +1386,7 @@ const returnState = {
   actualDate: new Date().toISOString().slice(0, 10),
   condition: 'bueno',
   notes: '',
+  payment: 0,
   notice: ''
 };
 
@@ -1336,6 +1398,8 @@ function renderReturnsUI() {
   const rentals = getReturnableRentals();
   const rental = rentals.find(item => String(item.id) === String(returnState.rentalId));
   const lateFee = rental ? calculateLateFee(rental.returnDate, returnState.actualDate, rental.pricePerPeriod, rental.quantity) : { lateDays: 0, latePeriods: 0, surcharge: 0 };
+  const rentalBalance = rental ? Math.max(0, Number(rental.total || 0) - Number(rental.paid || 0)) : 0;
+  const totalDue = rentalBalance + lateFee.surcharge;
   const pending = rentals.length;
   const late = db.returns.filter(item => item.status === 'atrasado').length;
   const surcharges = db.returns.reduce((sum, item) => sum + Number(item.surcharge || item.recharge || 0), 0);
@@ -1351,7 +1415,7 @@ function renderReturnsUI() {
         <label class="field" style="grid-column:1 / -1;"><span>Observaciones</span><textarea id="return-notes">${returnState.notes}</textarea></label>
       </div>
       <div class="return-detail"><div><span>Cliente</span><strong>${rental?.client || '-'}</strong></div><div><span>Evento</span><strong>${rental?.event || '-'}</strong></div><div><span>Paquete</span><strong>${rental?.package || '-'}</strong></div><div><span>Cantidad</span><strong>${rental?.quantity || '-'}</strong></div></div>
-      <div class="rental-calculation"><div><span>Días de retraso</span><strong>${lateFee.lateDays}</strong></div><div><span>Períodos de mora</span><strong>${lateFee.latePeriods}</strong></div><div><span>Precio por período</span><strong>${formatCurrency(rental?.pricePerPeriod || 0)}</strong></div><div><span>Recargo por mora</span><strong>${formatCurrency(lateFee.surcharge)}</strong></div></div>
+      <div class="rental-calculation"><div><span>Días de retraso</span><strong>${lateFee.lateDays}</strong></div><div><span>Períodos de mora</span><strong>${lateFee.latePeriods}</strong></div><div><span>Total alquiler</span><strong>${formatCurrency(rental?.total || 0)}</strong></div><div><span>Anticipo pagado</span><strong>${formatCurrency(rental?.paid || 0)}</strong></div><div><span>Saldo alquiler</span><strong>${formatCurrency(rentalBalance)}</strong></div><div><span>Recargo por mora</span><strong>${formatCurrency(lateFee.surcharge)}</strong></div><div><span>Total a pagar</span><strong>${formatCurrency(totalDue)}</strong></div><label class="field"><span>Pago del saldo y mora</span><input id="return-payment" type="number" min="${totalDue}" step="0.01" value="${returnState.payment || ''}" placeholder="${totalDue}"></label></div>
       <div class="module-actions" style="justify-content:flex-end; margin-top:18px;"><button type="button" class="primary-btn" data-return-action="confirm">Registrar devolución</button></div>
     </section>
     <section class="panel"><div class="module-header"><h2>Devoluciones registradas</h2><span class="subtitle">El inventario se actualiza según el estado recibido.</span></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>Cliente</th><th>Paquete</th><th>Fecha acordada</th><th>Fecha real</th><th>Retraso</th><th>Recargo</th><th>Estado mobiliario</th></tr></thead><tbody>${db.returns.length ? [...db.returns].reverse().map(item => `<tr><td>${item.id}</td><td>${item.client}</td><td>${item.package || '-'}</td><td>${item.agreedDate || item.dueDate || '-'}</td><td>${item.actualDate || '-'}</td><td>${item.lateDays ?? '-'}</td><td>${formatCurrency(item.surcharge || item.recharge || 0)}</td><td><span class="badge ${item.condition === 'reparacion' ? 'warning' : 'success'}">${item.condition === 'reparacion' ? 'En reparación' : 'Bueno'}</span></td></tr>`).join('') : '<tr><td colspan="8" style="text-align:center; padding:20px;">No hay devoluciones registradas.</td></tr>'}</tbody></table></div></section>
@@ -1365,12 +1429,16 @@ function bindReturnsActions() {
   root.querySelector('#return-actual-date')?.addEventListener('input', event => { returnState.actualDate = event.target.value; rerender(); });
   root.querySelector('#return-condition')?.addEventListener('change', event => { returnState.condition = event.target.value; });
   root.querySelector('#return-notes')?.addEventListener('input', event => { returnState.notes = event.target.value; });
+  root.querySelector('#return-payment')?.addEventListener('input', event => { returnState.payment = event.target.value; });
   root.querySelector('[data-return-action="confirm"]')?.addEventListener('click', () => {
     const rental = getReturnableRentals().find(item => String(item.id) === String(returnState.rentalId));
     if (!rental) { window.alert('Selecciona un alquiler pendiente.'); return; }
     if (!returnState.actualDate) { window.alert('Registra la fecha real de devolución.'); return; }
     if (new Date(`${returnState.actualDate}T00:00:00`) < new Date(`${rental.startDate}T00:00:00`)) { window.alert('La fecha real no puede ser anterior al inicio del alquiler.'); return; }
     const lateFee = calculateLateFee(rental.returnDate, returnState.actualDate, rental.pricePerPeriod, rental.quantity);
+    const rentalBalance = Math.max(0, Number(rental.total || 0) - Number(rental.paid || 0));
+    const totalDue = rentalBalance + lateFee.surcharge;
+    if (Number(returnState.payment || 0) < totalDue) { window.alert(`Debes registrar el saldo completo: ${formatCurrency(totalDue)}.`); return; }
     const transaction = runAtomicTransaction(() => {
       const movement = applyInventoryMovement({ packageId: rental.packageId, type: 'return', quantity: rental.quantity });
       if (!movement.success) return movement;
@@ -1379,13 +1447,13 @@ function bindReturnsActions() {
         if (!repairMovement.success) return repairMovement;
       }
       const returnId = `DEV-${String(20 + db.returns.length + 1).padStart(3, '0')}`;
-      db.returns.push({ id: returnId, rentalId: rental.id, client: rental.client, event: rental.event, package: rental.package, quantity: rental.quantity, agreedDate: rental.returnDate, dueDate: rental.returnDate, actualDate: returnState.actualDate, lateDays: lateFee.lateDays, latePeriods: lateFee.latePeriods, surcharge: lateFee.surcharge, condition: returnState.condition, notes: returnState.notes, status: lateFee.lateDays > 0 ? 'atrasado' : 'entregado' });
+      db.returns.push({ id: returnId, rentalId: rental.id, client: rental.client, event: rental.event, package: rental.package, quantity: rental.quantity, agreedDate: rental.returnDate, dueDate: rental.returnDate, actualDate: returnState.actualDate, lateDays: lateFee.lateDays, latePeriods: lateFee.latePeriods, surcharge: lateFee.surcharge, balancePaid: Number(returnState.payment), totalCollected: Number(rental.paid || 0) + Number(returnState.payment), condition: returnState.condition, notes: returnState.notes, status: lateFee.lateDays > 0 ? 'atrasado' : 'entregado' });
       rental.status = returnState.condition === 'reparacion' ? 'devuelto_reparacion' : 'devuelto';
       return { success: true, returnId };
     });
     if (!transaction.success) { window.alert(`Devolución revertida: ${transaction.message}`); return; }
     const returnId = transaction.result.returnId;
-    returnState.rentalId = ''; returnState.actualDate = new Date().toISOString().slice(0, 10); returnState.condition = 'bueno'; returnState.notes = ''; returnState.notice = `Devolución ${returnId} registrada. ${lateFee.lateDays ? `Recargo aplicado: ${formatCurrency(lateFee.surcharge)}.` : 'Sin mora.'}`;
+    returnState.rentalId = ''; returnState.actualDate = new Date().toISOString().slice(0, 10); returnState.condition = 'bueno'; returnState.notes = ''; returnState.payment = 0; returnState.notice = `Devolución ${returnId} registrada. ${lateFee.lateDays ? `Recargo aplicado: ${formatCurrency(lateFee.surcharge)}.` : 'Sin mora.'}`;
     rerender();
   });
 }
@@ -1841,11 +1909,14 @@ async function hashPassword(password, salt = crypto.getRandomValues(new Uint8Arr
 }
 
 async function ensureAuthUsers() {
-  if (Array.isArray(db.users) && db.users.length === seededUsers.length) return;
-  db.users = [];
+  db.users = Array.isArray(db.users) ? db.users : [];
   for (const seed of seededUsers) {
+    if (db.users.some(user => user.email.toLowerCase() === seed.email.toLowerCase() && user.passwordHash && user.passwordSalt)) continue;
     const credentials = await hashPassword(seed.password);
-    db.users.push({ email: seed.email, name: seed.name, role: seed.role, passwordHash: credentials.hash, passwordSalt: credentials.salt, activo: true });
+    const existingIndex = db.users.findIndex(user => user.email.toLowerCase() === seed.email.toLowerCase());
+    const user = { email: seed.email, name: seed.name, role: seed.role, passwordHash: credentials.hash, passwordSalt: credentials.salt, activo: true };
+    if (existingIndex >= 0) db.users[existingIndex] = user;
+    else db.users.push(user);
   }
   saveDatabase();
 }

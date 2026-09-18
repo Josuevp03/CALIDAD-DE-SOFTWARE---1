@@ -16,6 +16,7 @@ CREATE TABLE usuario (
     apellido TEXT NOT NULL,
     correo TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    password_salt TEXT NOT NULL,
     activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
     creado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_rol) REFERENCES rol(id_rol) ON UPDATE CASCADE ON DELETE RESTRICT

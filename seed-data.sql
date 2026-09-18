@@ -10,13 +10,13 @@ INSERT OR IGNORE INTO rol (id_rol, nombre, descripcion) VALUES
 (5, 'Artesano', 'Ejecución de fabricaciones'),
 (6, 'Vendedor', 'Ventas y atención comercial');
 
-INSERT OR IGNORE INTO usuario (id_usuario, id_rol, nombre, apellido, correo, password_hash) VALUES
-(1, 1, 'Ana', 'Administrador', 'admin@fiestaboliviana.local', 'PBKDF2-SHA256$demo$admin'),
-(2, 2, 'Carlos', 'Coordinador', 'coordinador@fiestaboliviana.local', 'PBKDF2-SHA256$demo$coordinador'),
-(3, 3, 'Laura', 'Diseñadora', 'disenador@fiestaboliviana.local', 'PBKDF2-SHA256$demo$disenador'),
-(4, 4, 'Miguel', 'Supervisor', 'supervisor@fiestaboliviana.local', 'PBKDF2-SHA256$demo$supervisor'),
-(5, 5, 'Juan', 'Artesano', 'artesano@fiestaboliviana.local', 'PBKDF2-SHA256$demo$artesano'),
-(6, 6, 'Sofía', 'Vendedora', 'vendedor@fiestaboliviana.local', 'PBKDF2-SHA256$demo$vendedor');
+INSERT OR IGNORE INTO usuario (id_usuario, id_rol, nombre, apellido, correo, password_hash, password_salt) VALUES
+(1, 1, 'Ana', 'Administrador', 'admin@fiestaboliviana.local', 'houEGGLqPllcVPOvfzbtAV/dctSVlVF74H+bkfKEPbE=', 'iCjmdl058mESnDihvRWeXg=='),
+(2, 2, 'Carlos', 'Coordinador', 'coordinador@fiestaboliviana.local', 'HoOiyNBHHtmgLDPu5s8CBuSporJZrj9Eqz7mCjZaZmg=', '+I5+JTnnPOEeSNDbH2DVuw=='),
+(3, 3, 'Laura', 'Diseñadora', 'disenador@fiestaboliviana.local', 'ceC5ewjgD33g0wj1eeNIzP6ojgQC0jtHDLIINyMOp6I=', 'RgUW1yxmPsNKxTCDERjI3g=='),
+(4, 4, 'Miguel', 'Supervisor', 'supervisor@fiestaboliviana.local', '6Kcu98o1ioa5WZRYJjlpgGmAtQVIy+gh/9/l8shy03Y=', 'a7O7APvXf/7W2wSNDZn/Yw=='),
+(5, 5, 'Juan', 'Artesano', 'artesano@fiestaboliviana.local', 'Dp7zuzpUjielaxQc+a44KHI5ICNtm6yJX8ed9J9usdA=', 'nEcRzCIgLzE1bq48D8eA6g=='),
+(6, 6, 'Sofía', 'Vendedora', 'vendedor@fiestaboliviana.local', 'yWLMMaphhAMMgmOxGPpqaqb4M3xg3mpW2YTPUNduFzo=', 'PfDeI9fCsDozeLBS+qQSbg==');
 
 INSERT OR IGNORE INTO cliente (id_cliente, nombre, apellido, documento, telefono, correo, direccion, ciudad, observaciones) VALUES
 (1, 'María', 'López', '4587210 LP', '70123456', 'maria.lopez@email.com', 'Av. Arce 120', 'La Paz', 'Cliente frecuente'),
