@@ -1421,7 +1421,7 @@ function bindRentalsActions() {
     root.querySelector(selector)?.addEventListener(eventName, event => {
     const map = { '#rental-client': 'clientId', '#rental-event': 'eventId', '#rental-package': 'packageId', '#rental-quantity': 'quantity', '#rental-start-date': 'startDate', '#rental-return-date': 'returnDate', '#rental-payment': 'paid', '#rental-status': 'status' };
     rentalState[map[selector]] = event.target.value;
-    if (['#rental-package', '#rental-quantity', '#rental-start-date', '#rental-return-date'].includes(selector)) rerender();
+    if (['#rental-package', '#rental-start-date', '#rental-return-date'].includes(selector)) rerender();
     });
   });
   root.querySelector('[data-rental-action="confirm"]')?.addEventListener('click', () => {
