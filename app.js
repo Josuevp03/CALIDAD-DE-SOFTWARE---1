@@ -1225,6 +1225,7 @@ function normalizeRentalData() {
     rental.periods = rental.periods || calculation.periods;
     rental.total = rental.total || calculation.total;
     rental.paid = rental.paid ?? 0;
+    rental.inventoryReserved = rental.inventoryReserved ?? false;
     rental.status = rental.status || 'confirmado';
   });
   saveDatabase();
@@ -1233,11 +1234,15 @@ function normalizeRentalData() {
 normalizeRentalData();
 
 function getRentalFormValues(root) {
-  const packageId = Number(root.querySelector('#rental-package')?.value || rentalState.packageId);
+  const packageField = root.querySelector('#rental-package');
+  const startDateField = root.querySelector('#rental-start-date');
+  const returnDateField = root.querySelector('#rental-return-date');
+  const quantityField = root.querySelector('#rental-quantity');
+  const packageId = Number(packageField ? packageField.value : rentalState.packageId);
   const pkg = getPackageCollection().find(item => item.id === packageId);
-  const startDate = root.querySelector('#rental-start-date')?.value || rentalState.startDate;
-  const returnDate = root.querySelector('#rental-return-date')?.value || rentalState.returnDate;
-  const quantity = Number(root.querySelector('#rental-quantity')?.value || rentalState.quantity || 1);
+  const startDate = startDateField ? startDateField.value : rentalState.startDate;
+  const returnDate = returnDateField ? returnDateField.value : rentalState.returnDate;
+  const quantity = Number(quantityField ? quantityField.value : rentalState.quantity || 1);
   const calculation = calculateRentalCost(startDate, returnDate, pkg?.rentalPrice || 0);
   return { packageId, pkg, startDate, returnDate, quantity, calculation };
 }
@@ -1248,7 +1253,28 @@ function rentalDatesOverlap(startA, endA, startB, endB) {
 }
 
 function getReservedRentalQuantity(packageId, startDate, returnDate) {
-  return db.rentals.filter(rental => Number(rental.packageId) === Number(packageId) && rental.status !== 'devuelto' && rentalDatesOverlap(startDate, returnDate, rental.startDate, rental.returnDate)).reduce((sum, rental) => sum + Number(rental.quantity || 0), 0);
+  return db.rentals.filter(rental => Number(rental.packageId) === Number(packageId) && !['devuelto', 'devuelto_reparacion', 'cancelado'].includes(rental.status) && rentalDatesOverlap(startDate, returnDate, rental.startDate, rental.returnDate)).reduce((sum, rental) => sum + Number(rental.quantity || 0), 0);
+}
+
+function cancelRental(rental, rerender) {
+  if (!rental || ['devuelto', 'devuelto_reparacion', 'cancelado'].includes(rental.status)) return;
+  if (!window.confirm(`¿Deseas cancelar el alquiler ${rental.id}? Se liberarán las unidades reservadas.`)) return;
+  const transaction = runAtomicTransaction(() => {
+    if (rental.inventoryReserved) {
+      const movement = applyInventoryMovement({ packageId: rental.packageId, type: 'return', quantity: rental.quantity });
+      if (!movement.success) return movement;
+      rental.inventoryReserved = false;
+    }
+    rental.status = 'cancelado';
+    rental.cancelledAt = new Date().toISOString().slice(0, 10);
+    return { success: true };
+  });
+  if (!transaction.success) {
+    window.alert(`No se pudo cancelar el alquiler: ${transaction.message}`);
+    return;
+  }
+  rentalState.notice = `Alquiler ${rental.id} cancelado y ${rental.quantity} unidad(es) liberada(s).`;
+  rerender();
 }
 
 function renderRentalEditForm(rental) {
@@ -1264,17 +1290,30 @@ function bindRentalEditForm(root, rerender) {
     const payload = Object.fromEntries(new FormData(event.target).entries());
     const calculation = calculateRentalCost(payload.startDate, payload.returnDate, rental.pricePerPeriod);
     const paid = Number(payload.paid || 0);
-    if (calculation.daysRequested < 2) { window.alert('El alquiler mínimo es de 2 días.'); return; }
+    if (!payload.startDate || !payload.returnDate || calculation.daysRequested < 2) { window.alert('El alquiler debe tener fechas válidas y una duración mínima de 2 días.'); return; }
     if (paid < calculation.total * 0.5) { window.alert(`El anticipo mínimo es ${formatCurrency(calculation.total * 0.5)}.`); return; }
     if (!Number.isInteger(Number(payload.quantity)) || Number(payload.quantity) < 1) { window.alert('La cantidad debe ser un número entero mayor que cero.'); return; }
+    const otherReservedQuantity = db.rentals
+      .filter(item => item.id !== rental.id && Number(item.packageId) === Number(rental.packageId) && !['devuelto', 'devuelto_reparacion', 'cancelado'].includes(item.status))
+      .filter(item => rentalDatesOverlap(payload.startDate, payload.returnDate, item.startDate, item.returnDate))
+      .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    const packageData = getPackageCollection().find(item => Number(item.id) === Number(rental.packageId));
+    const rentalCapacity = packageData ? Number(packageData.total || packageData.stock || 0) - Number(packageData.sold || 0) - Number(packageData.repair || 0) : 0;
+    if (otherReservedQuantity + Number(payload.quantity) > rentalCapacity) { window.alert('El alquiler editado se cruza con reservas existentes o supera la disponibilidad.'); return; }
     const transaction = runAtomicTransaction(() => {
-      const quantityDifference = Number(payload.quantity) - Number(rental.quantity);
-      if (quantityDifference > 0) {
-        const increase = applyInventoryMovement({ packageId: rental.packageId, type: 'rental', quantity: quantityDifference });
-        if (!increase.success) return increase;
-      } else if (quantityDifference < 0) {
-        const decrease = applyInventoryMovement({ packageId: rental.packageId, type: 'return', quantity: Math.abs(quantityDifference) });
-        if (!decrease.success) return decrease;
+      if (rental.inventoryReserved) {
+        const quantityDifference = Number(payload.quantity) - Number(rental.quantity);
+        if (quantityDifference > 0) {
+          const increase = applyInventoryMovement({ packageId: rental.packageId, type: 'rental', quantity: quantityDifference });
+          if (!increase.success) return increase;
+        } else if (quantityDifference < 0) {
+          const decrease = applyInventoryMovement({ packageId: rental.packageId, type: 'return', quantity: Math.abs(quantityDifference) });
+          if (!decrease.success) return decrease;
+        }
+      } else {
+        const reservation = applyInventoryMovement({ packageId: rental.packageId, type: 'rental', quantity: Number(payload.quantity) });
+        if (!reservation.success) return reservation;
+        rental.inventoryReserved = true;
       }
       rental.startDate = payload.startDate;
       rental.returnDate = payload.returnDate;
@@ -1318,7 +1357,7 @@ function renderRentalsUI() {
       <div class="rental-calculation"><div><span>Días solicitados</span><strong>${values.calculation.daysRequested > 0 ? values.calculation.daysRequested : '-'}</strong></div><div><span>Días cobrados</span><strong>${values.calculation.chargedDays || '-'}</strong></div><div><span>Períodos</span><strong>${values.calculation.periods || '-'}</strong></div><div><span>Precio por período</span><strong>${formatCurrency(values.calculation.pricePerPeriod)}</strong></div><div><span>Costo total</span><strong>${formatCurrency(values.calculation.total)}</strong></div><div><span>Anticipo mínimo</span><strong>${formatCurrency(minimumAdvance)}</strong></div><div><span>Saldo pendiente</span><strong>${formatCurrency(remainingBalance)}</strong></div></div>
       <div class="module-actions" style="justify-content:flex-end; margin-top:18px;"><button type="button" class="primary-btn" data-rental-action="confirm">Confirmar alquiler</button></div>
     </section>
-    <section class="panel"><div class="module-header"><h2>Alquileres registrados</h2><span class="subtitle">Las unidades se reservan al confirmar.</span></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>Cliente</th><th>Paquete</th><th>Días</th><th>Períodos</th><th>Total</th><th>Anticipo</th><th>Saldo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${db.rentals.length ? [...db.rentals].reverse().map(rental => `<tr><td>${rental.id}</td><td>${rental.client}</td><td>${rental.package}</td><td>${rental.daysRequested || '-'}/${rental.chargedDays || '-'}</td><td>${rental.periods || '-'}</td><td>${formatCurrency(rental.total)}</td><td>${formatCurrency(rental.paid)}</td><td>${formatCurrency(Math.max(0, Number(rental.total || 0) - Number(rental.paid || 0)))}</td><td><span class="badge ${rental.status === 'activo' || rental.status === 'confirmado' ? 'success' : 'warning'}">${rental.status}</span></td><td>${!['devuelto', 'devuelto_reparacion'].includes(rental.status) ? `<button type="button" class="chip-btn" data-rental-action="edit" data-id="${rental.id}">Editar</button>` : '-'}</td></tr>`).join('') : '<tr><td colspan="10" style="text-align:center; padding:20px;">No hay alquileres registrados.</td></tr>'}</tbody></table></div></section>
+    <section class="panel"><div class="module-header"><h2>Alquileres registrados</h2><span class="subtitle">Las unidades se reservan al confirmar.</span></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>Cliente</th><th>Paquete</th><th>Días</th><th>Períodos</th><th>Total</th><th>Anticipo</th><th>Saldo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${db.rentals.length ? [...db.rentals].reverse().map(rental => `<tr><td>${rental.id}</td><td>${rental.client}</td><td>${rental.package}</td><td>${rental.daysRequested || '-'}/${rental.chargedDays || '-'}</td><td>${rental.periods || '-'}</td><td>${formatCurrency(rental.total)}</td><td>${formatCurrency(rental.paid)}</td><td>${formatCurrency(Math.max(0, Number(rental.total || 0) - Number(rental.paid || 0)))}</td><td><span class="badge ${rental.status === 'activo' || rental.status === 'confirmado' ? 'success' : 'warning'}">${rental.status}</span></td><td>${!['devuelto', 'devuelto_reparacion', 'cancelado'].includes(rental.status) ? `<button type="button" class="chip-btn" data-rental-action="edit" data-id="${rental.id}">Editar</button><button type="button" class="chip-btn" data-rental-action="cancel" data-id="${rental.id}">Cancelar</button>` : '-'}</td></tr>`).join('') : '<tr><td colspan="10" style="text-align:center; padding:20px;">No hay alquileres registrados.</td></tr>'}</tbody></table></div></section>
   `;
 }
 
@@ -1355,7 +1394,7 @@ function bindRentalsActions() {
         return Number.isFinite(number) ? Math.max(highest, number) : highest;
       }, 100);
       const rentalId = `AL-${highestRentalNumber + 1}`;
-      db.rentals.push({ id: rentalId, client: getClientName(client), event: event.eventType || event.event, package: values.pkg.name, packageId: values.pkg.id, eventId: event.id, quantity: values.quantity, startDate: values.startDate, returnDate: values.returnDate, daysRequested: values.calculation.daysRequested, chargedDays: values.calculation.chargedDays, periods: values.calculation.periods, pricePerPeriod: values.calculation.pricePerPeriod, total: values.calculation.total, paid, status: rentalState.status, createdAt: new Date().toISOString().slice(0, 10) });
+      db.rentals.push({ id: rentalId, client: getClientName(client), event: event.eventType || event.event, package: values.pkg.name, packageId: values.pkg.id, eventId: event.id, quantity: values.quantity, startDate: values.startDate, returnDate: values.returnDate, daysRequested: values.calculation.daysRequested, chargedDays: values.calculation.chargedDays, periods: values.calculation.periods, pricePerPeriod: values.calculation.pricePerPeriod, total: values.calculation.total, paid, status: rentalState.status, inventoryReserved: true, createdAt: new Date().toISOString().slice(0, 10) });
       return { success: true, rentalId };
     });
     if (!transaction.success) { window.alert(`Alquiler revertido: ${transaction.message}`); return; }
@@ -1366,6 +1405,10 @@ function bindRentalsActions() {
   root.querySelectorAll('[data-rental-action="edit"]').forEach(button => button.addEventListener('click', () => {
     const rental = db.rentals.find(item => item.id === button.dataset.id);
     if (rental) { root.insertAdjacentHTML('beforeend', renderRentalEditForm(rental)); bindRentalEditForm(root, rerender); }
+  }));
+  root.querySelectorAll('[data-rental-action="cancel"]').forEach(button => button.addEventListener('click', () => {
+    const rental = db.rentals.find(item => item.id === button.dataset.id);
+    cancelRental(rental, rerender);
   }));
   bindRentalEditForm(root, rerender);
 }
@@ -1391,7 +1434,7 @@ const returnState = {
 };
 
 function getReturnableRentals() {
-  return db.rentals.filter(rental => !['devuelto', 'devuelto_reparacion'].includes(rental.status) && rental.packageId);
+  return db.rentals.filter(rental => !['devuelto', 'devuelto_reparacion', 'cancelado'].includes(rental.status) && rental.packageId);
 }
 
 function renderReturnsUI() {
@@ -1440,11 +1483,14 @@ function bindReturnsActions() {
     const totalDue = rentalBalance + lateFee.surcharge;
     if (Number(returnState.payment || 0) < totalDue) { window.alert(`Debes registrar el saldo completo: ${formatCurrency(totalDue)}.`); return; }
     const transaction = runAtomicTransaction(() => {
-      const movement = applyInventoryMovement({ packageId: rental.packageId, type: 'return', quantity: rental.quantity });
-      if (!movement.success) return movement;
-      if (returnState.condition === 'reparacion') {
-        const repairMovement = applyInventoryMovement({ packageId: rental.packageId, type: 'repair', quantity: rental.quantity });
-        if (!repairMovement.success) return repairMovement;
+      if (rental.inventoryReserved) {
+        const movement = applyInventoryMovement({ packageId: rental.packageId, type: 'return', quantity: rental.quantity });
+        if (!movement.success) return movement;
+        if (returnState.condition === 'reparacion') {
+          const repairMovement = applyInventoryMovement({ packageId: rental.packageId, type: 'repair', quantity: rental.quantity });
+          if (!repairMovement.success) return repairMovement;
+        }
+        rental.inventoryReserved = false;
       }
       const returnId = `DEV-${String(20 + db.returns.length + 1).padStart(3, '0')}`;
       db.returns.push({ id: returnId, rentalId: rental.id, client: rental.client, event: rental.event, package: rental.package, quantity: rental.quantity, agreedDate: rental.returnDate, dueDate: rental.returnDate, actualDate: returnState.actualDate, lateDays: lateFee.lateDays, latePeriods: lateFee.latePeriods, surcharge: lateFee.surcharge, balancePaid: Number(returnState.payment), totalCollected: Number(rental.paid || 0) + Number(returnState.payment), condition: returnState.condition, notes: returnState.notes, status: lateFee.lateDays > 0 ? 'atrasado' : 'entregado' });
@@ -1874,11 +1920,11 @@ const navMap = {
 
 const rolePermissions = {
   'Administrador': Object.keys(navMap),
-  'Coordinador comercial': ['dashboard', 'paquetes', 'inventario', 'ventas', 'alquileres', 'devoluciones', 'servicios', 'clientes', 'reportes', 'logout'],
-  'Diseñador': ['dashboard', 'paquetes', 'fabricacion', 'servicios', 'clientes', 'logout'],
-  'Supervisor de taller': ['dashboard', 'fabricacion', 'inventario', 'devoluciones', 'reportes', 'logout'],
+  'Coordinador comercial': ['dashboard', 'paquetes', 'ventas', 'alquileres', 'devoluciones', 'clientes', 'reportes', 'logout'],
+  'Diseñador': ['dashboard', 'paquetes', 'fabricacion', 'logout'],
+  'Supervisor de taller': ['dashboard', 'fabricacion', 'inventario', 'logout'],
   'Artesano': ['dashboard', 'fabricacion', 'logout'],
-  'Vendedor': ['dashboard', 'paquetes', 'ventas', 'alquileres', 'devoluciones', 'servicios', 'clientes', 'logout']
+  'Vendedor': ['dashboard', 'ventas', 'alquileres', 'devoluciones', 'clientes', 'logout']
 };
 
 const seededUsers = [
