@@ -1,149 +1,5 @@
-const STORAGE_KEY = 'decoraciones_fiesta_boliviana_db';
 const API_URL = 'api.php';
-let databaseMode = false;
-
-const defaultDatabase = {
-  packages: [
-    {
-      id: 1,
-      code: 'PK-101',
-      name: 'Clásico Elegante',
-      description: 'Set formal para bodas con mantelería, centros y ambientación sobria.',
-      category: 'Boda',
-      salePrice: 1800,
-      rentalPrice: 650,
-      color: 'Blanco',
-      material: 'Tela premium',
-      theme: 'Clásico',
-      capacity: 80,
-      status: 'disponible',
-      stock: 8
-    },
-    {
-      id: 2,
-      code: 'PK-102',
-      name: 'Temático',
-      description: 'Kit festivo con tonos vivos para quinceañeras y cumpleaños.',
-      category: 'Fiesta',
-      salePrice: 2400,
-      rentalPrice: 820,
-      color: 'Rojo',
-      material: 'Vinil y tela',
-      theme: 'Fiesta',
-      capacity: 60,
-      status: 'alquilado',
-      stock: 12
-    },
-    {
-      id: 3,
-      code: 'PK-103',
-      name: 'Rustic',
-      description: 'Ambientación campestre con materiales naturales y tonos cálidos.',
-      category: 'Campestre',
-      salePrice: 1950,
-      rentalPrice: 700,
-      color: 'Madera',
-      material: 'Madera y yute',
-      theme: 'Rustic',
-      capacity: 50,
-      status: 'disponible',
-      stock: 6
-    },
-    {
-      id: 4,
-      code: 'PK-104',
-      name: 'Moderno',
-      description: 'Diseño minimalista para eventos corporativos y lanzamientos.',
-      category: 'Corporativo',
-      salePrice: 2700,
-      rentalPrice: 900,
-      color: 'Gris',
-      material: 'Aluminio y tela',
-      theme: 'Moderno',
-      capacity: 70,
-      status: 'reparacion',
-      stock: 4
-    },
-    {
-      id: 5,
-      code: 'PK-105',
-      name: 'Boda Premium',
-      description: 'Ambiente VIP con florales, iluminación y piezas premium.',
-      category: 'Boda',
-      salePrice: 3500,
-      rentalPrice: 1200,
-      color: 'Blanco dorado',
-      material: 'Tela y metal',
-      theme: 'Premium',
-      capacity: 100,
-      status: 'vendido',
-      stock: 3
-    },
-    {
-      id: 6,
-      code: 'PK-106',
-      name: 'Corporativo',
-      description: 'Paquete para ferias, convenciones y recibimientos institucionales.',
-      category: 'Empresa',
-      salePrice: 2600,
-      rentalPrice: 880,
-      color: 'Azul',
-      material: 'Tela y aluminio',
-      theme: 'Corporativo',
-      capacity: 90,
-      status: 'disponible',
-      stock: 9
-    }
-  ],
-  rentals: [
-    { id: 'AL-104', client: 'María López', event: 'Boda', package: 'Clásico Elegante', status: 'activo', createdAt: '2026-09-12' },
-    { id: 'AL-105', client: 'Carlos Pérez', event: 'Quinceañero', package: 'Temático', status: 'confirmado', createdAt: '2026-09-13' },
-    { id: 'AL-106', client: 'Empresa ABC', event: 'Evento empresarial', package: 'Moderno', status: 'activo', createdAt: '2026-09-10' },
-    { id: 'AL-107', client: 'Grupo Sol', event: 'Aniversario', package: 'Rustic', status: 'activo', createdAt: '2026-09-15' },
-    { id: 'AL-108', client: 'Julio R.', event: 'Cena gala', package: 'Boda Premium', status: 'confirmado', createdAt: '2026-09-16' }
-  ],
-  clients: [
-    { id: 1, firstName: 'María', lastName: 'López', document: '4587210 LP', phone: '70123456', email: 'maria.lopez@email.com', address: 'Av. Arce 120', city: 'La Paz', notes: 'Cliente frecuente' },
-    { id: 2, firstName: 'Carlos', lastName: 'Pérez', document: '6234187 CB', phone: '71234567', email: 'carlos.perez@email.com', address: 'Calle Sucre 45', city: 'Cochabamba', notes: '' },
-    { id: 3, firstName: 'Empresa', lastName: 'ABC', document: '10203040 SC', phone: '76543210', email: 'eventos@empresaabc.com', address: 'Av. Banzer 500', city: 'Santa Cruz', notes: 'Cliente corporativo' },
-    { id: 4, firstName: 'Grupo', lastName: 'Sol', document: '7845123 OR', phone: '69876543', email: 'contacto@gruposol.com', address: 'Calle Bolívar 88', city: 'Oruro', notes: '' }
-  ],
-  events: [
-    { id: 1, event: 'Boda', eventType: 'Boda', client: 'María López', date: '2026-09-20', time: '18:00', place: 'Salón Colonial', city: 'La Paz', address: 'Av. Costanera 120', preferences: 'Tonos blancos y dorados', notes: '', package: 'Clásico Elegante', status: 'Alquilado' },
-    { id: 2, event: 'Quinceañero', eventType: 'Quinceañero', client: 'Carlos Pérez', date: '2026-09-25', time: '19:30', place: 'Salón Imperial', city: 'Cochabamba', address: 'Av. Blanco Galindo 50', preferences: 'Decoración rosada', notes: '', package: 'Temático', status: 'Confirmado' },
-    { id: 3, event: 'Evento empresarial', eventType: 'Evento empresarial', client: 'Empresa ABC', date: '2026-10-02', time: '09:00', place: 'Centro de Convenciones', city: 'Santa Cruz', address: 'Av. Las Palmas 400', preferences: 'Imagen corporativa azul', notes: '', package: 'Moderno', status: 'Confirmado' },
-    { id: 4, event: 'Aniversario', eventType: 'Celebración tradicional', client: 'Grupo Sol', date: '2026-10-10', time: '20:00', place: 'Quinta Los Álamos', city: 'Oruro', address: 'Calle Aroma 10', preferences: 'Elementos tradicionales', notes: '', package: 'Rustic', status: 'Pendiente' },
-    { id: 5, event: 'Cena gala', eventType: 'Otro', client: 'Julio R.', date: '2026-10-12', time: '20:30', place: 'Hotel Central', city: 'La Paz', address: 'Calle Comercio 22', preferences: 'Iluminación cálida', notes: '', package: 'Boda Premium', status: 'Confirmado' }
-  ],
-  returns: [
-    { id: 'DEV-021', client: 'Pedro R.', dueDate: '2026-09-12', actualDate: null, status: 'atrasado' },
-    { id: 'DEV-022', client: 'Lucía M.', dueDate: '2026-09-15', actualDate: null, status: 'pendiente' },
-    { id: 'DEV-023', client: 'José T.', dueDate: '2026-09-10', actualDate: '2026-09-10', status: 'entregado' },
-    { id: 'DEV-024', client: 'María López', dueDate: '2026-09-20', actualDate: null, status: 'pendiente' }
-  ],
-  repairs: [
-    { id: 'REP-07', item: 'Sillas con forro', status: 'en_reparacion' },
-    { id: 'REP-08', item: 'Equipo de audio', status: 'en_reparacion' },
-    { id: 'REP-09', item: 'Ambientación floral', status: 'en_espera' }
-  ],
-  fabrication: [
-    { id: 'FAB-001', packageId: 3, package: 'Rustic', person: 'Juan Quispe', responsible: 'Supervisor de Taller', date: '2026-09-10', status: 'completada', efficiency: 92 },
-    { id: 'FAB-002', packageId: 4, package: 'Moderno', person: 'María Condori', responsible: 'Supervisor de Taller', date: '2026-09-15', status: 'en_proceso', efficiency: 78 }
-  ],
-  sales: [
-    { id: 'FV-204', client: 'María López', amount: 2100, date: '2026-09-12', status: 'pagado' },
-    { id: 'FV-205', client: 'Empresa ABC', amount: 7500, date: '2026-09-14', status: 'abono' },
-    { id: 'FV-206', client: 'Grupo Sol', amount: 3250, date: '2026-09-15', status: 'pendiente' },
-    { id: 'FV-207', client: 'Julio R.', amount: 4800, date: '2026-09-16', status: 'pagado' }
-  ],
-  services: [
-    { id: 1, name: 'Decoradores especializados', type: 'Decoración', price: 1500, availability: 4, status: 'disponible', associations: [] },
-    { id: 2, name: 'Iluminación ambiental', type: 'Iluminación', price: 1200, availability: 12, status: 'disponible', associations: [] },
-    { id: 3, name: 'Mantelería premium', type: 'Complemento', price: 850, availability: 20, status: 'disponible', associations: [] },
-    { id: 4, name: 'Montaje', type: 'Logística', price: 950, availability: 6, status: 'disponible', associations: [] },
-    { id: 5, name: 'Desmontaje', type: 'Logística', price: 700, availability: 6, status: 'disponible', associations: [] }
-  ]
-};
+const databaseMode = true;
 
 function requestApi(action, payload = null) {
   const request = new XMLHttpRequest();
@@ -156,111 +12,25 @@ function requestApi(action, payload = null) {
   return response.data;
 }
 
-function loadDatabase() {
-  try {
-    const remote = requestApi('bootstrap');
-    databaseMode = true;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(remote));
-    return remote;
-  } catch (error) {
-    console.warn('No se pudo cargar MySQL; se usarán datos locales de respaldo.', error);
-  }
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch (error) {
-    console.warn('No se pudo cargar la base local, usando datos iniciales.', error);
-  }
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultDatabase));
-  return defaultDatabase;
-}
-
-const db = loadDatabase();
+const db = requestApi('bootstrap');
 
 function runAtomicTransaction(operation) {
   const snapshot = JSON.stringify(db);
   try {
     const result = operation();
     if (result && result.success === false) throw new Error(result.message || 'La operación no pudo completarse.');
-    saveDatabase();
     return { success: true, result };
   } catch (error) {
     const restored = JSON.parse(snapshot);
     Object.keys(db).forEach(key => delete db[key]);
     Object.assign(db, restored);
-    localStorage.setItem(STORAGE_KEY, snapshot);
     return { success: false, message: error.message || 'La operación fue revertida.' };
   }
 }
 
 function saveDatabase() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+  return true;
 }
-
-function normalizePackageInventory() {
-  (db.packages || []).forEach((pkg) => {
-    const total = Math.max(0, Number(pkg.total ?? pkg.stock ?? 0));
-    const rented = Math.max(0, Number(pkg.rented ?? (pkg.status === 'alquilado' ? 1 : 0)));
-    const sold = Math.max(0, Number(pkg.sold ?? (pkg.status === 'vendido' ? 1 : 0)));
-    const repair = Math.max(0, Number(pkg.repair ?? (pkg.status === 'reparacion' ? 1 : 0)));
-    const available = Math.max(0, total - rented - sold - repair);
-
-    pkg.total = total;
-    pkg.rented = rented;
-    pkg.sold = sold;
-    pkg.repair = repair;
-    pkg.available = available;
-    pkg.stock = available;
-    pkg.status = repair > 0 ? 'reparacion' : rented > 0 ? 'alquilado' : sold >= total && total > 0 ? 'vendido' : 'disponible';
-  });
-  saveDatabase();
-}
-
-normalizePackageInventory();
-
-function normalizeClientEventData() {
-  if (!Array.isArray(db.clients) || db.clients.length === 0) {
-    db.clients = defaultDatabase.clients.map(client => ({ ...client }));
-  }
-  db.events = db.events || [];
-  db.events.forEach((event) => {
-    event.eventType = event.eventType || event.event || 'Otro';
-    event.time = event.time || '09:00';
-    event.place = event.place || 'Por definir';
-    event.city = event.city || '';
-    event.address = event.address || '';
-    event.preferences = event.preferences || '';
-    event.notes = event.notes || '';
-  });
-  saveDatabase();
-}
-
-normalizeClientEventData();
-
-function normalizeServicesData() {
-  if (!Array.isArray(db.services) || db.services.length === 0) {
-    db.services = defaultDatabase.services.map(service => ({ ...service, associations: [] }));
-  }
-  db.services.forEach(service => {
-    service.associations = Array.isArray(service.associations) ? service.associations : [];
-    service.availability = Math.max(0, Number(service.availability ?? 0));
-    service.price = Number(service.price || 0);
-    service.status = service.availability > 0 ? 'disponible' : 'agotado';
-  });
-  saveDatabase();
-}
-
-normalizeServicesData();
-
-function normalizeFabricationData() {
-  if (!Array.isArray(db.fabrication) || db.fabrication.length === 0) db.fabrication = defaultDatabase.fabrication.map(item => ({ ...item }));
-  saveDatabase();
-}
-
-normalizeFabricationData();
 
 const clientEventState = {
   clientSearch: '',
@@ -1094,12 +864,11 @@ function bindPackageModuleActions() {
       const existingPackage = getPackageCollection().find(pkg => pkg.code === payload.code);
       if (existingPackage && !root.querySelector('[data-id]')) {
         Object.assign(existingPackage, packageData);
-      } else if (!databaseMode) {
+      } else {
         const maxId = getPackageCollection().reduce((id, pkg) => Math.max(id, pkg.id || 0), 0);
         getPackageCollection().push({ id: maxId + 1, ...packageData });
       }
 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
       form.closest('.modal').remove();
       root.innerHTML = renderPackageModuleUI();
       bindPackageModuleActions();
@@ -1199,11 +968,9 @@ function bindSalesActions() {
       });
       if (unavailable) { window.alert(`Venta rechazada: no hay suficientes unidades disponibles de ${unavailable.name}.`); return; }
       const transaction = runAtomicTransaction(() => {
-        if (!databaseMode) {
-          for (const item of salesState.items) {
-            const movement = applyInventoryMovement({ packageId: item.packageId, type: 'sale', quantity: item.quantity });
-            if (!movement.success) return movement;
-          }
+        for (const item of salesState.items) {
+          const movement = applyInventoryMovement({ packageId: item.packageId, type: 'sale', quantity: item.quantity });
+          if (!movement.success) return movement;
         }
         const highestInvoiceNumber = db.sales.reduce((highest, sale) => {
           const number = Number(String(sale.id || '').replace(/^FV-/, ''));
@@ -1984,15 +1751,6 @@ const rolePermissions = {
   'Vendedor': ['dashboard', 'ventas', 'alquileres', 'devoluciones', 'clientes', 'logout']
 };
 
-const seededUsers = [
-  { email: 'admin@fiestaboliviana.local', password: 'Admin123!', name: 'Administrador', role: 'Administrador' },
-  { email: 'coordinador@fiestaboliviana.local', password: 'Coord123!', name: 'Coordinador Comercial', role: 'Coordinador comercial' },
-  { email: 'disenador@fiestaboliviana.local', password: 'Diseno123!', name: 'Diseñador', role: 'Diseñador' },
-  { email: 'supervisor@fiestaboliviana.local', password: 'Taller123!', name: 'Supervisor de Taller', role: 'Supervisor de taller' },
-  { email: 'artesano@fiestaboliviana.local', password: 'Artesano123!', name: 'Artesano', role: 'Artesano' },
-  { email: 'vendedor@fiestaboliviana.local', password: 'Vendedor123!', name: 'Vendedor', role: 'Vendedor' }
-];
-
 const AUTH_SESSION_KEY = 'decoraciones_fiesta_boliviana_session';
 const PBKDF2_ITERATIONS = 150000;
 let currentSession = null;
@@ -2009,19 +1767,6 @@ async function hashPassword(password, salt = crypto.getRandomValues(new Uint8Arr
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' }, key, 256);
   return { hash: bytesToBase64(bits), salt: bytesToBase64(salt) };
-}
-
-async function ensureAuthUsers() {
-  db.users = Array.isArray(db.users) ? db.users : [];
-  for (const seed of seededUsers) {
-    if (db.users.some(user => user.email.toLowerCase() === seed.email.toLowerCase() && user.passwordHash && user.passwordSalt)) continue;
-    const credentials = await hashPassword(seed.password);
-    const existingIndex = db.users.findIndex(user => user.email.toLowerCase() === seed.email.toLowerCase());
-    const user = { email: seed.email, name: seed.name, role: seed.role, passwordHash: credentials.hash, passwordSalt: credentials.salt, activo: true };
-    if (existingIndex >= 0) db.users[existingIndex] = user;
-    else db.users.push(user);
-  }
-  saveDatabase();
 }
 
 async function verifyPassword(password, user) {
@@ -2092,7 +1837,6 @@ function logoutUser() {
 }
 
 async function initializeAuthentication() {
-  await ensureAuthUsers();
   const savedSession = window.AppArchitecture?.authentication?.getSession() || sessionStorage.getItem(AUTH_SESSION_KEY);
   if (savedSession) {
     currentSession = typeof savedSession === 'string' ? JSON.parse(savedSession) : savedSession;
