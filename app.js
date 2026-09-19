@@ -1255,7 +1255,11 @@ const returnState = {
 };
 
 function getReturnableRentals() {
-  return db.rentals.filter(rental => !['devuelto', 'devuelto_reparacion', 'cancelado'].includes(rental.status) && rental.packageId);
+  return db.rentals.filter(rental =>
+    !['devuelto', 'devuelto_reparacion', 'cancelado'].includes(rental.status) &&
+    rental.packageId &&
+    !db.returns.some(returnEntry => String(returnEntry.rentalId) === String(rental.id))
+  );
 }
 
 function renderReturnsUI() {

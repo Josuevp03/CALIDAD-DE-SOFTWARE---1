@@ -64,9 +64,10 @@ function bootstrap() {
         $data['events'][] = ['id' => (int)$row['id_evento'], 'event' => $row['nombre'], 'eventType' => $row['tipo_evento'], 'client' => $row['cliente'], 'date' => $row['fecha'], 'time' => $row['hora'] ?? '', 'place' => $row['lugar'], 'city' => $row['ciudad'], 'address' => $row['direccion'] ?? '', 'preferences' => $row['preferencias'] ?? '', 'notes' => $row['observaciones'] ?? '', 'status' => 'Confirmado'];
     }
 
-    $rentalSql = "SELECT a.*, CONCAT(c.nombre, ' ', c.apellido) AS cliente, e.nombre AS evento, p.nombre AS paquete, p.id_paquete, da.cantidad, p.precio_alquiler_periodo FROM alquiler a JOIN cliente c ON c.id_cliente = a.id_cliente JOIN evento e ON e.id_evento = a.id_evento JOIN detalle_alquiler da ON da.id_alquiler = a.id_alquiler JOIN paquete_decorativo p ON p.id_paquete = da.id_paquete ORDER BY a.id_alquiler";
+    $rentalSql = "SELECT a.*, CONCAT(c.nombre, ' ', c.apellido) AS cliente, e.nombre AS evento, p.nombre AS paquete, p.id_paquete, da.cantidad, p.precio_alquiler_periodo, EXISTS (SELECT 1 FROM devolucion d WHERE d.id_alquiler = a.id_alquiler) AS ya_devuelto FROM alquiler a JOIN cliente c ON c.id_cliente = a.id_cliente JOIN evento e ON e.id_evento = a.id_evento JOIN detalle_alquiler da ON da.id_alquiler = a.id_alquiler JOIN paquete_decorativo p ON p.id_paquete = da.id_paquete ORDER BY a.id_alquiler";
     foreach ($pdo->query($rentalSql)->fetchAll() as $row) {
-        $data['rentals'][] = ['id' => 'AL-' . $row['id_alquiler'], 'dbId' => (int)$row['id_alquiler'], 'client' => $row['cliente'], 'event' => $row['evento'], 'package' => $row['paquete'], 'packageId' => (int)$row['id_paquete'], 'eventId' => null, 'quantity' => (int)$row['cantidad'], 'startDate' => $row['fecha_inicio'], 'returnDate' => $row['fecha_devolucion_acordada'], 'daysRequested' => (int)$row['dias_solicitados'], 'chargedDays' => (int)$row['dias_cobrados'], 'periods' => (int)$row['periodos'], 'pricePerPeriod' => (float)$row['precio_por_periodo'], 'total' => (float)$row['total'], 'paid' => (float)$row['pago_anticipado'], 'status' => $row['estado'], 'inventoryReserved' => in_array($row['estado'], ['confirmado', 'activo'], true), 'createdAt' => $row['fecha_inicio']];
+        $status = ($row['ya_devuelto'] ? 'devuelto' : $row['estado']);
+        $data['rentals'][] = ['id' => 'AL-' . $row['id_alquiler'], 'dbId' => (int)$row['id_alquiler'], 'client' => $row['cliente'], 'event' => $row['evento'], 'package' => $row['paquete'], 'packageId' => (int)$row['id_paquete'], 'eventId' => null, 'quantity' => (int)$row['cantidad'], 'startDate' => $row['fecha_inicio'], 'returnDate' => $row['fecha_devolucion_acordada'], 'daysRequested' => (int)$row['dias_solicitados'], 'chargedDays' => (int)$row['dias_cobrados'], 'periods' => (int)$row['periodos'], 'pricePerPeriod' => (float)$row['precio_por_periodo'], 'total' => (float)$row['total'], 'paid' => (float)$row['pago_anticipado'], 'status' => $status, 'inventoryReserved' => in_array($status, ['confirmado', 'activo'], true), 'createdAt' => $row['fecha_inicio']];
     }
 
     foreach ($pdo->query('SELECT d.*, a.id_alquiler, a.fecha_devolucion_acordada, a.pago_anticipado, a.total, CONCAT(c.nombre, " ", c.apellido) AS cliente, p.nombre AS paquete FROM devolucion d JOIN alquiler a ON a.id_alquiler = d.id_alquiler JOIN cliente c ON c.id_cliente = a.id_cliente JOIN detalle_alquiler da ON da.id_alquiler = a.id_alquiler JOIN paquete_decorativo p ON p.id_paquete = da.id_paquete ORDER BY d.id_devolucion')->fetchAll() as $row) {
@@ -158,9 +159,16 @@ function createSale($data) {
 
 function createReturn($data) {
     $pdo = database();
+    $rentalId = (int)($data['dbId'] ?? 0);
+    if ($rentalId <= 0) throw new InvalidArgumentException('Falta el id del alquiler a devolver.');
+    if (empty($data['actualDate'])) throw new InvalidArgumentException('Falta la fecha real de devolución.');
+    $existing = $pdo->prepare('SELECT id_devolucion FROM devolucion WHERE id_alquiler = ? LIMIT 1');
+    $existing->execute([$rentalId]);
+    $existingId = $existing->fetchColumn();
+    if ($existingId) throw new RuntimeException('Este alquiler ya tiene una devolución registrada.');
+
     $pdo->beginTransaction();
     try {
-        $rentalId = (int)$data['dbId'];
         $stmt = $pdo->prepare('INSERT INTO devolucion (id_alquiler, fecha_real, estado_mobiliario, observaciones) VALUES (?, ?, ?, ?)');
         $stmt->execute([$rentalId, $data['actualDate'], $data['condition'], $data['notes'] ?? null]);
         $returnId = (int)$pdo->lastInsertId();
