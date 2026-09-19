@@ -1,4 +1,6 @@
 const STORAGE_KEY = 'decoraciones_fiesta_boliviana_db';
+const API_URL = 'api.php';
+let databaseMode = false;
 
 const defaultDatabase = {
   packages: [
@@ -143,7 +145,26 @@ const defaultDatabase = {
   ]
 };
 
+function requestApi(action, payload = null) {
+  const request = new XMLHttpRequest();
+  request.open(payload ? 'POST' : 'GET', `${API_URL}?action=${encodeURIComponent(action)}`, false);
+  request.setRequestHeader('Content-Type', 'application/json');
+  request.send(payload ? JSON.stringify(payload) : null);
+  if (request.status < 200 || request.status >= 300) throw new Error(`API ${action}: ${request.status}`);
+  const response = JSON.parse(request.responseText);
+  if (!response.success) throw new Error(response.message || 'La API rechazó la operación.');
+  return response.data;
+}
+
 function loadDatabase() {
+  try {
+    const remote = requestApi('bootstrap');
+    databaseMode = true;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(remote));
+    return remote;
+  } catch (error) {
+    console.warn('No se pudo cargar MySQL; se usarán datos locales de respaldo.', error);
+  }
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -352,7 +373,14 @@ function bindClientEventForms(root, rerender) {
     const payload = Object.fromEntries(new FormData(event.target).entries());
     const clientData = { firstName: payload.firstName, lastName: payload.lastName, document: payload.document, phone: payload.phone, email: payload.email, address: payload.address, city: payload.city, notes: payload.notes };
     const id = Number(event.target.dataset.id);
-    if (id) Object.assign(db.clients.find(client => client.id === id), clientData); else db.clients.push({ id: Math.max(0, ...db.clients.map(client => client.id)) + 1, ...clientData });
+    try {
+      const result = requestApi('client_save', { ...clientData, id: id || null });
+      if (id) Object.assign(db.clients.find(client => client.id === id), clientData);
+      else db.clients.push({ id: Number(result.id), ...clientData });
+    } catch (error) {
+      window.alert(`No se pudo guardar el cliente en MySQL: ${error.message}`);
+      return;
+    }
     saveDatabase(); event.target.closest('.modal').remove(); rerender();
   });
   root.querySelector('#event-form')?.addEventListener('submit', event => {
@@ -360,7 +388,14 @@ function bindClientEventForms(root, rerender) {
     const payload = Object.fromEntries(new FormData(event.target).entries());
     const eventData = { event: payload.eventType, eventType: payload.eventType, client: payload.client, date: payload.date, time: payload.time, place: payload.place, city: payload.city, address: payload.address, preferences: payload.preferences, notes: payload.notes, status: 'Pendiente' };
     const id = Number(event.target.dataset.id);
-    if (id) Object.assign(db.events.find(item => item.id === id), eventData); else db.events.push({ id: Math.max(0, ...db.events.map(item => item.id)) + 1, ...eventData });
+    try {
+      const result = requestApi('event_save', { ...eventData, id: id || null });
+      if (id) Object.assign(db.events.find(item => item.id === id), eventData);
+      else db.events.push({ id: Number(result.id), ...eventData });
+    } catch (error) {
+      window.alert(`No se pudo guardar el evento en MySQL: ${error.message}`);
+      return;
+    }
     saveDatabase(); event.target.closest('.modal').remove(); rerender();
   });
 }
@@ -1059,7 +1094,7 @@ function bindPackageModuleActions() {
       const existingPackage = getPackageCollection().find(pkg => pkg.code === payload.code);
       if (existingPackage && !root.querySelector('[data-id]')) {
         Object.assign(existingPackage, packageData);
-      } else {
+      } else if (!databaseMode) {
         const maxId = getPackageCollection().reduce((id, pkg) => Math.max(id, pkg.id || 0), 0);
         getPackageCollection().push({ id: maxId + 1, ...packageData });
       }
@@ -1164,15 +1199,18 @@ function bindSalesActions() {
       });
       if (unavailable) { window.alert(`Venta rechazada: no hay suficientes unidades disponibles de ${unavailable.name}.`); return; }
       const transaction = runAtomicTransaction(() => {
-        for (const item of salesState.items) {
-          const movement = applyInventoryMovement({ packageId: item.packageId, type: 'sale', quantity: item.quantity });
-          if (!movement.success) return movement;
+        if (!databaseMode) {
+          for (const item of salesState.items) {
+            const movement = applyInventoryMovement({ packageId: item.packageId, type: 'sale', quantity: item.quantity });
+            if (!movement.success) return movement;
+          }
         }
         const highestInvoiceNumber = db.sales.reduce((highest, sale) => {
           const number = Number(String(sale.id || '').replace(/^FV-/, ''));
           return Number.isFinite(number) ? Math.max(highest, number) : highest;
         }, 200);
-        const invoiceNumber = `FV-${highestInvoiceNumber + 1}`;
+        const remote = requestApi('sale_create', { clientId: Number(salesState.clientId), items: salesState.items, total: totals.total, paid });
+        const invoiceNumber = `FV-${Number(remote.id)}`;
         db.sales.push({ id: invoiceNumber, client: getSalesClientName(salesState.clientId), items: salesState.items.map(item => ({ ...item })), amount: totals.total, total: totals.total, paid, date: new Date().toISOString().slice(0, 10), status: 'pagado' });
         return { success: true, invoiceNumber };
       });
@@ -1260,9 +1298,13 @@ function cancelRental(rental, rerender) {
   if (!rental || ['devuelto', 'devuelto_reparacion', 'cancelado'].includes(rental.status)) return;
   if (!window.confirm(`¿Deseas cancelar el alquiler ${rental.id}? Se liberarán las unidades reservadas.`)) return;
   const transaction = runAtomicTransaction(() => {
+    const remoteId = Number(rental.dbId || String(rental.id).replace(/^AL-/, ''));
+    if (remoteId) requestApi('rental_cancel', { dbId: remoteId });
     if (rental.inventoryReserved) {
-      const movement = applyInventoryMovement({ packageId: rental.packageId, type: 'return', quantity: rental.quantity });
-      if (!movement.success) return movement;
+      if (!databaseMode) {
+        const movement = applyInventoryMovement({ packageId: rental.packageId, type: 'return', quantity: rental.quantity });
+        if (!movement.success) return movement;
+      }
       rental.inventoryReserved = false;
     }
     rental.status = 'cancelado';
@@ -1301,7 +1343,8 @@ function bindRentalEditForm(root, rerender) {
     const rentalCapacity = packageData ? Number(packageData.total || packageData.stock || 0) - Number(packageData.sold || 0) - Number(packageData.repair || 0) : 0;
     if (otherReservedQuantity + Number(payload.quantity) > rentalCapacity) { window.alert('El alquiler editado se cruza con reservas existentes o supera la disponibilidad.'); return; }
     const transaction = runAtomicTransaction(() => {
-      if (rental.inventoryReserved) {
+      if (databaseMode) requestApi('rental_update', { dbId: Number(rental.dbId || String(rental.id).replace(/^AL-/, '')), startDate: payload.startDate, returnDate: payload.returnDate, daysRequested: calculation.daysRequested, chargedDays: calculation.chargedDays, periods: calculation.periods, total: calculation.total, paid, quantity: Number(payload.quantity), status: payload.status });
+      if (rental.inventoryReserved && !databaseMode) {
         const quantityDifference = Number(payload.quantity) - Number(rental.quantity);
         if (quantityDifference > 0) {
           const increase = applyInventoryMovement({ packageId: rental.packageId, type: 'rental', quantity: quantityDifference });
@@ -1364,7 +1407,15 @@ function renderRentalsUI() {
 function bindRentalsActions() {
   const root = moduleContent;
   const rerender = () => { root.innerHTML = renderRentalsUI(); bindRentalsActions(); };
-  root.querySelector('#rental-client-search')?.addEventListener('input', event => { rentalClientState.search = event.target.value; rerender(); });
+  root.querySelector('#rental-client-search')?.addEventListener('input', event => {
+    rentalClientState.search = event.target.value;
+    const clientSelect = root.querySelector('#rental-client');
+    if (!clientSelect) return;
+    const selectedClientId = clientSelect.value;
+    const filteredClients = db.clients.filter(client => getClientName(client).toLowerCase().includes(rentalClientState.search.toLowerCase()) || String(client.document || '').toLowerCase().includes(rentalClientState.search.toLowerCase()));
+    clientSelect.innerHTML = `<option value="">Seleccionar cliente</option>${filteredClients.map(client => `<option value="${client.id}">${getClientName(client)} · ${client.document}</option>`).join('')}`;
+    if (filteredClients.some(client => String(client.id) === selectedClientId)) clientSelect.value = selectedClientId;
+  });
   ['#rental-client', '#rental-event', '#rental-package', '#rental-quantity', '#rental-start-date', '#rental-return-date', '#rental-payment', '#rental-status'].forEach(selector => {
     const eventName = ['#rental-client', '#rental-event', '#rental-package', '#rental-status'].includes(selector) ? 'change' : 'input';
     root.querySelector(selector)?.addEventListener(eventName, event => {
@@ -1387,14 +1438,17 @@ function bindRentalsActions() {
     if (getReservedRentalQuantity(values.pkg.id, values.startDate, values.returnDate) + values.quantity > rentalCapacity) { window.alert('Alquiler rechazado: la cantidad solicitada se cruza con reservas existentes para esas fechas.'); return; }
     if (!Number.isFinite(paid) || paid < values.calculation.total * 0.5) { window.alert(`El alquiler requiere un anticipo mínimo del 50%: ${formatCurrency(values.calculation.total * 0.5)}.`); return; }
     const transaction = runAtomicTransaction(() => {
-      const movement = applyInventoryMovement({ packageId: values.pkg.id, type: 'rental', quantity: values.quantity });
-      if (!movement.success) return movement;
+      if (!databaseMode) {
+        const movement = applyInventoryMovement({ packageId: values.pkg.id, type: 'rental', quantity: values.quantity });
+        if (!movement.success) return movement;
+      }
       const highestRentalNumber = db.rentals.reduce((highest, rental) => {
         const number = Number(String(rental.id || '').replace(/^AL-/, ''));
         return Number.isFinite(number) ? Math.max(highest, number) : highest;
       }, 100);
-      const rentalId = `AL-${highestRentalNumber + 1}`;
-      db.rentals.push({ id: rentalId, client: getClientName(client), event: event.eventType || event.event, package: values.pkg.name, packageId: values.pkg.id, eventId: event.id, quantity: values.quantity, startDate: values.startDate, returnDate: values.returnDate, daysRequested: values.calculation.daysRequested, chargedDays: values.calculation.chargedDays, periods: values.calculation.periods, pricePerPeriod: values.calculation.pricePerPeriod, total: values.calculation.total, paid, status: rentalState.status, inventoryReserved: true, createdAt: new Date().toISOString().slice(0, 10) });
+      const remote = requestApi('rental_create', { clientId: client.id, eventId: event.id, packageId: values.pkg.id, quantity: values.quantity, startDate: values.startDate, returnDate: values.returnDate, daysRequested: values.calculation.daysRequested, chargedDays: values.calculation.chargedDays, periods: values.calculation.periods, pricePerPeriod: values.calculation.pricePerPeriod, total: values.calculation.total, paid, status: rentalState.status });
+      const rentalId = `AL-${Number(remote.id)}`;
+      db.rentals.push({ id: rentalId, dbId: Number(remote.id), client: getClientName(client), event: event.eventType || event.event, package: values.pkg.name, packageId: values.pkg.id, eventId: event.id, quantity: values.quantity, startDate: values.startDate, returnDate: values.returnDate, daysRequested: values.calculation.daysRequested, chargedDays: values.calculation.chargedDays, periods: values.calculation.periods, pricePerPeriod: values.calculation.pricePerPeriod, total: values.calculation.total, paid, status: rentalState.status, inventoryReserved: true, createdAt: new Date().toISOString().slice(0, 10) });
       return { success: true, rentalId };
     });
     if (!transaction.success) { window.alert(`Alquiler revertido: ${transaction.message}`); return; }
@@ -1483,16 +1537,19 @@ function bindReturnsActions() {
     const totalDue = rentalBalance + lateFee.surcharge;
     if (Number(returnState.payment || 0) < totalDue) { window.alert(`Debes registrar el saldo completo: ${formatCurrency(totalDue)}.`); return; }
     const transaction = runAtomicTransaction(() => {
+      const remote = requestApi('return_create', { dbId: Number(rental.dbId || String(rental.id).replace(/^AL-/, '')), agreedDate: rental.returnDate, actualDate: returnState.actualDate, condition: returnState.condition, notes: returnState.notes, surcharge: lateFee.surcharge, payment: Number(returnState.payment) });
       if (rental.inventoryReserved) {
-        const movement = applyInventoryMovement({ packageId: rental.packageId, type: 'return', quantity: rental.quantity });
-        if (!movement.success) return movement;
-        if (returnState.condition === 'reparacion') {
-          const repairMovement = applyInventoryMovement({ packageId: rental.packageId, type: 'repair', quantity: rental.quantity });
-          if (!repairMovement.success) return repairMovement;
+        if (rental.inventoryReserved && !databaseMode) {
+          const movement = applyInventoryMovement({ packageId: rental.packageId, type: 'return', quantity: rental.quantity });
+          if (!movement.success) return movement;
+          if (returnState.condition === 'reparacion') {
+            const repairMovement = applyInventoryMovement({ packageId: rental.packageId, type: 'repair', quantity: rental.quantity });
+            if (!repairMovement.success) return repairMovement;
+          }
         }
         rental.inventoryReserved = false;
       }
-      const returnId = `DEV-${String(20 + db.returns.length + 1).padStart(3, '0')}`;
+      const returnId = `DEV-${String(remote.id).padStart(3, '0')}`;
       db.returns.push({ id: returnId, rentalId: rental.id, client: rental.client, event: rental.event, package: rental.package, quantity: rental.quantity, agreedDate: rental.returnDate, dueDate: rental.returnDate, actualDate: returnState.actualDate, lateDays: lateFee.lateDays, latePeriods: lateFee.latePeriods, surcharge: lateFee.surcharge, balancePaid: Number(returnState.payment), totalCollected: Number(rental.paid || 0) + Number(returnState.payment), condition: returnState.condition, notes: returnState.notes, status: lateFee.lateDays > 0 ? 'atrasado' : 'entregado' });
       rental.status = returnState.condition === 'reparacion' ? 'devuelto_reparacion' : 'devuelto';
       return { success: true, returnId };
